@@ -1,0 +1,119 @@
+# This workflow builds a Python base image using the Marinara tool.
+# Since these builds are not reproducible, and we don't know when packages
+# have changed, the build is repeated daily. The content of the
+# /var/lib/rpmmanifest/container-manifest-1 file (which contains package names
+# and versions) of the current local build is compared with the file from the most recently
+# pushed image. The workflow then only rebuilds and pushes the multi-platform
+# image if there are differences in the /var/lib/rpmmanifest/container-manifest-1 file.
+
+name: Build Distroless Python Base Image
+
+on:
+  #  push:
+  #    branches: [ main ]
+  #  pull_request:
+  #    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * *'  # Run every day at 9 AM UTC
+
+env:
+  image-build-args: |
+    AZL_VERSION=3.0
+    NAMESPACE=azurelinux
+    IMAGE_TYPE=custom-nonroot
+    PACKAGES_TO_INSTALL=distroless-packages-base python3
+    USER=nonroot
+    USER_UID=65532
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE_TAG: ghcr.io/mshekow/python-azure-linux:3.12
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+        # -f dockerfiles/dockerfile-new-image --build-arg AZL_VERSION=3.0 --build-arg NAMESPACE=azurelinux
+        # --build-arg IMAGE_TYPE="custom-nonroot" --build-arg PACKAGES_TO_INSTALL="distroless-packages-base nodejs"
+        # --build-arg USER="nonroot" --build-arg USER_UID=65532
+
+      - name: Build and load Docker base image
+        uses: docker/build-push-action@v6
+        with:
+          context: https://github.com/microsoft/marinara.git
+          file: dockerfiles/dockerfile-new-image
+          push: false
+          load: true
+          tags: localbuild
+          build-args: ${{ env.image-build-args }}
+
+      - name: Setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - name: Setup crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Extract build info of local build
+        run: |
+          # Create a container from the image without starting it
+          CONTAINER_ID=$(docker container create localbuild bash)
+          # Copy the file from the container to the local filesystem
+          docker cp $CONTAINER_ID:/var/lib/rpmmanifest/container-manifest-1 local-build-info
+          # Remove the container
+          docker container rm $CONTAINER_ID
+        shell: bash
+
+      - name: Extract build info of most recently pushed build
+        run: |
+          # Check if the image exists before trying to export it
+          if crane manifest ${{ env.IMAGE_TAG }} &>/dev/null; then
+            echo "Remote image exists, extracting build info..."
+            crane export ${{ env.IMAGE_TAG }} - | tar -Oxf - var/lib/rpmmanifest/container-manifest-1 > pushed-build-info
+          else
+            echo "Remote image does not exist yet, creating empty build info file..."
+            touch pushed-build-info
+          fi
+        shell: bash
+
+      - name: Compare build info files
+        id: compare
+        run: |
+          if ! cmp -s local-build-info pushed-build-info; then
+            echo "files_different=true" >> $GITHUB_OUTPUT
+            echo "Build info files are different, will rebuild and push multi-platform image"
+          else
+            echo "files_different=false" >> $GITHUB_OUTPUT
+            echo "Build info files are identical, skipping re-building and pushing the multi-platform build"
+          fi
+        shell: bash
+
+      - name: Login to GitHub Container Registry
+        if: steps.compare.outputs.files_different == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push multi-platform image
+        if: steps.compare.outputs.files_different == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: https://github.com/microsoft/marinara.git
+          file: dockerfiles/dockerfile-new-image
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_TAG }}
+          build-args: ${{ env.image-build-args }}
