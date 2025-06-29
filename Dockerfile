@@ -3,9 +3,9 @@ FROM mcr.microsoft.com/azurelinux/base/python:3 AS builder
 ARG VIRTUAL_ENV
 WORKDIR /app
 
-RUN python -m venv $VIRTUAL_ENV
+RUN python3 -m venv $VIRTUAL_ENV
 COPY requirements.txt .
-RUN .venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
