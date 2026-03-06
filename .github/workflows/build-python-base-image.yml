@@ -49,7 +49,7 @@ jobs:
         # --build-arg USER="nonroot" --build-arg USER_UID=65532
 
       - name: Build and load Docker base image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: https://github.com/microsoft/marinara.git
           file: dockerfiles/dockerfile-new-image
@@ -109,7 +109,7 @@ jobs:
 
       - name: Build and push multi-platform image
         if: steps.compare.outputs.files_different == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: https://github.com/microsoft/marinara.git
           file: dockerfiles/dockerfile-new-image
