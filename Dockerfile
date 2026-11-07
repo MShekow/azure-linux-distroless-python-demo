@@ -11,7 +11,7 @@ COPY . .
 
 # Whenever a new build of the ghcr.io/mshekow/python-azure-linux:3.12 image is available, a tool like Renovate Bot
 # can update the sha256 digest
-FROM ghcr.io/mshekow/python-azure-linux:3.12@sha256:2b67f3a856b6b2a75b6afc3bdbd38cf2dd45037969fc9ff75131014b428dca79 AS final
+FROM ghcr.io/mshekow/python-azure-linux:3.12@sha256:7904e8484dee9596e0397685de7cdb20e02c9dd36a1226a1f796becae2c858d8 AS final
 ARG VIRTUAL_ENV
 WORKDIR /app
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
